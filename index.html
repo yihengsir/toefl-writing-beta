@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TOEFL Writing Beta</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand" id="appName">TOEFL Writing Beta</div>
+      <div class="subtle" id="userLine">未登录</div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <button class="ghost hidden" id="logoutBtn" type="button">退出</button>
+  </header>
+
+  <main class="shell">
+    <section class="auth-panel" id="authView">
+      <div class="auth-card">
+        <h1>登录</h1>
+        <label>邮箱</label>
+        <input id="loginEmail" type="email" autocomplete="email">
+        <label>密码</label>
+        <input id="loginPassword" type="password" autocomplete="current-password">
+        <button id="loginBtn" type="button">登录</button>
+        <div class="divider"></div>
+        <h2>学生注册</h2>
+        <label>姓名</label>
+        <input id="registerName" type="text" autocomplete="name">
+        <label>邮箱</label>
+        <input id="registerEmail" type="email" autocomplete="email">
+        <label>密码</label>
+        <input id="registerPassword" type="password" autocomplete="new-password">
+        <button class="secondary" id="registerBtn" type="button">注册学生账号</button>
+        <p class="notice" id="authNotice"></p>
+      </div>
+    </section>
+
+    <section class="hidden" id="appView">
+      <div class="status" id="statusBox"></div>
+
+      <section class="panel hidden" id="studentDashboard">
+        <div class="panel-head">
+          <h1>学生端</h1>
+          <button class="ghost" id="refreshStudentBtn" type="button">刷新</button>
+        </div>
+        <div class="grid two">
+          <div>
+            <h2>我的题目</h2>
+            <div class="list" id="studentAssignments"></div>
+          </div>
+          <div>
+            <h2>消息</h2>
+            <div class="list compact" id="studentInbox"></div>
+          </div>
+        </div>
+
+        <div class="workspace hidden" id="studentWriter">
+          <div class="prompt-box" id="studentPrompt"></div>
+          <div class="writer-meta">
+            <span id="wordCount">0 words</span>
+            <span id="timerText">00:00</span>
+          </div>
+          <textarea id="essayInput" class="essay" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="saveDraftBtn" class="secondary" type="button">保存草稿</button>
+            <button id="submitEssayBtn" type="button">提交作文</button>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div>
+            <h2>我的提交</h2>
+            <div class="list" id="studentSubmissions"></div>
+          </div>
+          <div>
+            <h2>付款申请</h2>
+            <label>申请类型</label>
+            <select id="paymentType">
+              <option value="ai_feedback">AI 反馈次数</option>
+              <option value="question_unlock">题目解锁</option>
+              <option value="feature_unlock">功能解锁</option>
+            </select>
+            <label>备注</label>
+            <textarea id="paymentNote" rows="4" placeholder="例如：已微信转账，申请 1 次 AI 反馈"></textarea>
+            <button id="createPaymentRequestBtn" class="secondary" type="button">提交申请</button>
+            <div class="list compact" id="studentPaymentRequests"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="teacherDashboard">
+        <div class="panel-head">
+          <h1>教师端</h1>
+          <button class="ghost" id="refreshTeacherBtn" type="button">刷新</button>
+        </div>
+        <div class="stats" id="teacherStats"></div>
+
+        <div class="grid three">
+          <div>
+            <h2>分发题目</h2>
+            <label>学生</label>
+            <select id="assignStudent"></select>
+            <label>题目</label>
+            <select id="assignQuestion"></select>
+            <label>说明</label>
+            <textarea id="assignInstructions" rows="3"></textarea>
+            <label class="checkline"><input id="assignAllowAi" type="checkbox"> 允许学生用 AI 次数反馈</label>
+            <button id="createAssignmentBtn" type="button">分发</button>
+          </div>
+          <div>
+            <h2>手动发权益</h2>
+            <label>学生</label>
+            <select id="grantStudent"></select>
+            <label>权益类型</label>
+            <select id="grantKind">
+              <option value="ai_feedback">AI 反馈 1 次</option>
+              <option value="question">解锁选中题目</option>
+            </select>
+            <label>题目</label>
+            <select id="grantQuestion"></select>
+            <label>备注</label>
+            <input id="grantNote" type="text">
+            <button id="grantEntitlementBtn" class="secondary" type="button">发放</button>
+          </div>
+          <div>
+            <h2>付款申请</h2>
+            <div class="list compact" id="teacherPaymentRequests"></div>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div>
+            <h2>学生</h2>
+            <div class="list compact" id="teacherStudents"></div>
+          </div>
+          <div>
+            <h2>最近提交</h2>
+            <div class="list" id="teacherSubmissions"></div>
+          </div>
+        </div>
+
+        <div class="review-box hidden" id="reviewBox">
+          <div class="panel-head">
+            <h2>批改</h2>
+            <button class="ghost" id="closeReviewBtn" type="button">关闭</button>
+          </div>
+          <div id="reviewEssay" class="essay-preview"></div>
+          <label>分数</label>
+          <input id="reviewScore" type="number" min="0" max="6" step="0.5">
+          <label>反馈</label>
+          <textarea id="reviewSummary" rows="6"></textarea>
+          <button id="publishFeedbackBtn" type="button">发布反馈</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js"></script>
+  <script src="./assets/app.js"></script>
+</body>
+</html>
+
