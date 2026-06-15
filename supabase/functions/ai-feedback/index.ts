@@ -14,6 +14,26 @@ type FeedbackResult = {
   revised_essay?: string;
 };
 
+function getSupabaseKey(name: 'publishable' | 'secret') {
+  const legacyName = name === 'publishable' ? 'SUPABASE_ANON_KEY' : 'SUPABASE_SERVICE_ROLE_KEY';
+  const legacyValue = Deno.env.get(legacyName);
+  if (legacyValue) return legacyValue;
+
+  const dictionaryName = name === 'publishable' ? 'SUPABASE_PUBLISHABLE_KEYS' : 'SUPABASE_SECRET_KEYS';
+  const dictionaryValue = Deno.env.get(dictionaryName);
+  if (!dictionaryValue) return '';
+
+  const parsed = JSON.parse(dictionaryValue) as Record<string, string>;
+  return parsed.default || Object.values(parsed)[0] || '';
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -21,12 +41,14 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const anonKey = getSupabaseKey('publishable');
+    const serviceKey = getSupabaseKey('secret');
     const deepseekKey = Deno.env.get('DEEPSEEK_API_KEY')!;
     const model = Deno.env.get('DEEPSEEK_MODEL') || 'deepseek-chat';
     const authHeader = req.headers.get('Authorization');
 
+    if (!supabaseUrl || !anonKey || !serviceKey) throw new Error('Missing Supabase function secrets.');
+    if (!deepseekKey) throw new Error('Missing DEEPSEEK_API_KEY.');
     if (!authHeader) throw new Error('Missing Authorization header.');
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -109,7 +131,7 @@ Return JSON:
     const content = aiJson.choices?.[0]?.message?.content || '{}';
     const result = JSON.parse(content) as FeedbackResult;
 
-    await admin.from('ai_feedbacks').insert({
+    const { error: feedbackInsertError } = await admin.from('ai_feedbacks').insert({
       submission_id,
       student_id: userData.user.id,
       requested_by: userData.user.id,
@@ -120,10 +142,14 @@ Return JSON:
       result_json: result
     });
 
-    await admin
+    if (feedbackInsertError) throw feedbackInsertError;
+
+    const { error: entitlementUpdateError } = await admin
       .from('entitlements')
       .update({ remaining_uses: Math.max(0, Number(entitlement.remaining_uses || 1) - 1) })
       .eq('id', entitlement.id);
+
+    if (entitlementUpdateError) throw entitlementUpdateError;
 
     await admin.from('notifications').insert({
       user_id: userData.user.id,
@@ -131,14 +157,8 @@ Return JSON:
       body: result.summary || '你的 AI 反馈已生成。'
     });
 
-    return new Response(JSON.stringify({ message: 'AI feedback completed.', result }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return jsonResponse({ message: 'AI feedback completed.', result });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message || String(error) }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return jsonResponse({ error: error.message || String(error) }, 400);
   }
 });
-
