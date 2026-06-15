@@ -84,8 +84,8 @@ async function init() {
 function bindEvents() {
   $('studentLoginBtn').addEventListener('click', () => login('student'));
   $('teacherLoginBtn').addEventListener('click', () => login('teacher'));
-  $('studentLoginModeBtn').addEventListener('click', () => setStudentAuthMode('login'));
-  $('studentRegisterModeBtn').addEventListener('click', () => setStudentAuthMode('register'));
+  $('studentRegisterModeBtn').addEventListener('click', showStudentRegister);
+  $('backToLoginBtn').addEventListener('click', showLogin);
   $('registerBtn').addEventListener('click', registerStudent);
   $('logoutBtn').addEventListener('click', logout);
   $('refreshStudentBtn').addEventListener('click', loadStudentDashboard);
@@ -104,12 +104,15 @@ function bindEvents() {
   });
 }
 
-function setStudentAuthMode(mode) {
-  const isLogin = mode === 'login';
-  $('studentLoginModeBtn').classList.toggle('active', isLogin);
-  $('studentRegisterModeBtn').classList.toggle('active', !isLogin);
-  $('studentLoginForm').classList.toggle('hidden', !isLogin);
-  $('studentRegisterForm').classList.toggle('hidden', isLogin);
+function showStudentRegister() {
+  $('loginForm').classList.add('hidden');
+  $('studentRegisterForm').classList.remove('hidden');
+  showAuthNotice('');
+}
+
+function showLogin() {
+  $('studentRegisterForm').classList.add('hidden');
+  $('loginForm').classList.remove('hidden');
   showAuthNotice('');
 }
 
@@ -171,7 +174,7 @@ function renderNav() {
   [
     ['library', '题库'],
     ['history', '历史'],
-    ['payments', '付费申请']
+    ['payments', '升级']
   ].forEach(([view, label]) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -191,10 +194,27 @@ function renderNav() {
 
 async function login(role) {
   showAuthNotice('');
-  const email = $(role === 'teacher' ? 'teacherLoginEmail' : 'studentLoginEmail').value.trim();
-  const password = $(role === 'teacher' ? 'teacherLoginPassword' : 'studentLoginPassword').value;
+  const email = $('loginEmail').value.trim();
+  const password = $('loginPassword').value;
   const { error } = await state.client.auth.signInWithPassword({ email, password });
-  if (error) showAuthNotice(error.message);
+  if (error) {
+    showAuthNotice(error.message);
+    return;
+  }
+
+  await waitForProfileRole(role);
+  if (state.profile?.role && state.profile.role !== role) {
+    await state.client.auth.signOut();
+    showAuthNotice(role === 'teacher' ? '这个账号不是教师账号。' : '这个账号不是学生账号。');
+  }
+}
+
+async function waitForProfileRole(expectedRole) {
+  const { data } = await state.client.auth.getSession();
+  state.session = data.session;
+  if (!state.session) return;
+  await loadProfile();
+  return state.profile?.role === expectedRole;
 }
 
 async function registerStudent() {
@@ -247,8 +267,9 @@ async function loadStudentDashboard() {
 
   const userId = state.session.user.id;
 
-  const [assignmentsRes, submissionsRes, feedbacksRes, aiRes, inboxRes, payRes, entRes] = await Promise.all([
+  const [assignmentsRes, questionsRes, submissionsRes, feedbacksRes, aiRes, inboxRes, payRes, entRes] = await Promise.all([
     state.client.from('assignments').select('*, questions(*)').eq('student_id', userId).eq('status', 'published').order('created_at', { ascending: false }),
+    state.client.from('questions').select('*').eq('is_active', true).order('source_date', { ascending: false }).order('import_index', { ascending: false }),
     state.client.from('submissions').select('*, questions(*)').eq('student_id', userId).order('created_at', { ascending: false }),
     state.client.from('teacher_feedbacks').select('*').eq('published', true).order('created_at', { ascending: false }),
     state.client.from('ai_feedbacks').select('*').eq('student_id', userId).order('created_at', { ascending: false }),
@@ -259,6 +280,7 @@ async function loadStudentDashboard() {
 
   if (assignmentsRes.error) throw assignmentsRes.error;
   state.assignments = assignmentsRes.data || [];
+  state.questions = questionsRes.error ? uniqueQuestionsFromAssignments(state.assignments) : questionsRes.data || [];
   state.submissions = submissionsRes.data || [];
   state.feedbacks = feedbacksRes.data || [];
   state.aiFeedbacks = aiRes.data || [];
@@ -307,37 +329,139 @@ function renderStudentStats() {
 
 function renderStudentAssignments() {
   const box = $('studentAssignments');
-  if (!state.assignments.length) {
-    box.innerHTML = '<div class="empty-state">暂无分发题目。</div>';
+  const questions = state.questions.length ? state.questions : uniqueQuestionsFromAssignments(state.assignments);
+  if (!questions.length) {
+    box.innerHTML = '<div class="empty-state">暂无题库内容。</div>';
     return;
   }
-  box.innerHTML = state.assignments.map((assignment) => {
-    const q = assignment.questions;
-    const submissions = state.submissions.filter((item) => item.assignment_id === assignment.id);
-    const lastSubmission = submissions[0];
-    const hasDraft = Boolean(localStorage.getItem(draftKey(assignment.id)));
-    return `
-      <article class="question-card ${q?.type === 'email' ? 'email' : 'academic'}">
-        <div class="card-topline">
-          <span class="badge">${escapeHtml(q?.type || '')}</span>
-          <span>${Math.round((q?.time_limit_seconds || 0) / 60)} min</span>
+
+  const sections = [
+    ['email', 'Email 写作'],
+    ['academic', 'Academic Discussion']
+  ];
+  box.innerHTML = sections.map(([type, label]) => renderQuestionTypeSection(type, label, questions)).join('');
+}
+
+function uniqueQuestionsFromAssignments(assignments) {
+  const seen = new Set();
+  return assignments
+    .map((item) => item.questions)
+    .filter((question) => {
+      if (!question || seen.has(question.id)) return false;
+      seen.add(question.id);
+      return true;
+    });
+}
+
+function unlockedQuestionIds() {
+  const ids = new Set();
+  state.assignments.forEach((assignment) => {
+    if (assignment.question_id) ids.add(assignment.question_id);
+  });
+  state.entitlements.forEach((entitlement) => {
+    if (entitlement.entitlement_type === 'question' && entitlement.question_id) ids.add(entitlement.question_id);
+  });
+  return ids;
+}
+
+function renderQuestionTypeSection(type, label, questions) {
+  const typedQuestions = questions.filter((question) => question.type === type);
+  if (!typedQuestions.length) return '';
+  const unlockedIds = unlockedQuestionIds();
+  const unlocked = typedQuestions.filter((question) => unlockedIds.has(question.id));
+  const locked = typedQuestions.filter((question) => !unlockedIds.has(question.id));
+  return `
+    <section class="library-type-section ${type === 'email' ? 'email' : 'academic'}">
+      <div class="library-type-head">
+        <div>
+          <div class="auth-card-label">${type === 'email' ? 'Email' : 'Academic'}</div>
+          <h3>${label}</h3>
         </div>
-        <div class="item-title">${escapeHtml(q?.title || 'Untitled')}</div>
-        <p class="card-summary">${questionSummary(q)}</p>
-        <div class="meta">
-          <span>${formatDate(assignment.created_at)}</span>
-          ${submissions.length ? `<span>${submissions.length} 次提交</span>` : '<span>未提交</span>'}
-          ${lastSubmission ? `<span>上次 ${lastSubmission.word_count} words</span>` : ''}
-          ${assignment.allow_ai_feedback ? '<span class="badge">可用 AI</span>' : ''}
-          ${hasDraft ? '<span class="badge draft">有草稿</span>' : ''}
+        <div class="library-counts">
+          <span>已解锁 ${unlocked.length}</span>
+          <span>待解锁 ${locked.length}</span>
         </div>
-        <div class="item-actions">
-          <button type="button" onclick="startAssignment('${assignment.id}')">${hasDraft ? '继续写作' : '开始写作'}</button>
-          ${submissions.length ? `<button type="button" class="secondary" onclick="openStudentSubmissionDetail('${lastSubmission.id}')">查看历史</button>` : ''}
+      </div>
+      <div class="unlock-group">
+        <h4>已解锁</h4>
+        <div class="question-grid compact-grid">
+          ${unlocked.length ? unlocked.map(renderUnlockedQuestionCard).join('') : '<div class="empty-state compact-empty">暂无已解锁题目。</div>'}
         </div>
-      </article>
-    `;
-  }).join('');
+      </div>
+      <div class="unlock-group">
+        <h4>待解锁</h4>
+        ${renderLockedQuestionGroups(locked)}
+      </div>
+    </section>
+  `;
+}
+
+function renderUnlockedQuestionCard(question) {
+  const assignment = state.assignments.find((item) => item.question_id === question.id);
+  const submissions = state.submissions.filter((item) => item.question_id === question.id);
+  const lastSubmission = submissions[0];
+  const draftKeyValue = assignment ? draftKey(assignment.id) : questionDraftKey(question.id);
+  const hasDraft = Boolean(localStorage.getItem(draftKeyValue));
+  return `
+    <article class="question-card ${question.type === 'email' ? 'email' : 'academic'}">
+      <div class="card-topline">
+        <span class="badge">已解锁</span>
+        <span>${Math.round((question.time_limit_seconds || 0) / 60)} min</span>
+        <span>${questionSetLabel(question)}</span>
+      </div>
+      <div class="item-title">${escapeHtml(question.title || 'Untitled')}</div>
+      <p class="card-summary">${questionSummary(question)}</p>
+      <div class="meta">
+        ${submissions.length ? `<span>${submissions.length} 次提交</span>` : '<span>未提交</span>'}
+        ${lastSubmission ? `<span>上次 ${lastSubmission.word_count} words</span>` : ''}
+        ${assignment?.allow_ai_feedback ? '<span class="badge">可用 AI</span>' : ''}
+        ${hasDraft ? '<span class="badge draft">有草稿</span>' : ''}
+      </div>
+      <div class="item-actions">
+        <button type="button" onclick="${assignment ? `startAssignment('${assignment.id}')` : `startUnlockedQuestion('${question.id}')`}">${hasDraft ? '继续写作' : '开始写作'}</button>
+        ${submissions.length ? `<button type="button" class="secondary" onclick="openStudentSubmissionDetail('${lastSubmission.id}')">查看历史</button>` : ''}
+      </div>
+    </article>
+  `;
+}
+
+function renderLockedQuestionGroups(questions) {
+  if (!questions.length) return '<div class="empty-state compact-empty">暂无待解锁题目。</div>';
+  const groups = new Map();
+  questions.forEach((question) => {
+    const label = questionSetLabel(question);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(question);
+  });
+
+  return Array.from(groups.entries()).map(([label, rows]) => `
+    <div class="locked-set">
+      <div class="locked-set-head">
+        <b>${escapeHtml(label)}</b>
+        <span>${rows.length} 题</span>
+      </div>
+      <div class="locked-question-list">
+        ${rows.map((question) => `
+          <div class="locked-question-row">
+            <span>${escapeHtml(question.title)}</span>
+            <button class="secondary" type="button" onclick="prefillUpgradeRequest('${question.id}')">升级解锁</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function questionSetLabel(question) {
+  const raw = String(question.source_raw || '').trim();
+  const date = question.source_date || (raw.match(/\d{4}-\d{2}-\d{2}/)?.[0] || 'Unknown date');
+  const setMatch = raw.match(/([ABC])\s*卷|(\d{4}-\d{2}-\d{2})([ABC])/i);
+  const set = setMatch?.[1] || setMatch?.[3] || '';
+  return `${date}${set ? ` ${set.toUpperCase()}卷` : ''}`;
+}
+
+function questionDraftKey(questionId) {
+  return `beta_draft_${state.session.user.id}_question_${questionId}`;
 }
 
 function questionSummary(question) {
@@ -363,14 +487,42 @@ window.startAssignment = function startAssignment(assignmentId) {
   $('essayInput').focus();
 };
 
+window.startUnlockedQuestion = function startUnlockedQuestion(questionId) {
+  const question = state.questions.find((item) => item.id === questionId);
+  if (!question) return;
+  setStudentView('library');
+  state.currentAssignment = {
+    id: null,
+    question_id: question.id,
+    questions: question,
+    allow_ai_feedback: false,
+    unlocked_direct: true
+  };
+  state.writerStartedAt = Date.now();
+  $('studentWriter').classList.remove('hidden');
+  $('studentPrompt').innerHTML = renderPrompt(question);
+  $('essayInput').value = localStorage.getItem(questionDraftKey(question.id)) || '';
+  updateWriterMeta();
+  clearInterval(state.writerTimer);
+  state.writerTimer = setInterval(updateWriterMeta, 1000);
+  $('essayInput').focus();
+};
+
 function draftKey(assignmentId) {
   return `beta_draft_${state.session.user.id}_${assignmentId}`;
+}
+
+function currentDraftKey() {
+  if (!state.currentAssignment) return '';
+  return state.currentAssignment.id
+    ? draftKey(state.currentAssignment.id)
+    : questionDraftKey(state.currentAssignment.question_id);
 }
 
 function handleEssayInput() {
   updateWriterMeta();
   if (state.currentAssignment) {
-    localStorage.setItem(draftKey(state.currentAssignment.id), $('essayInput').value);
+    localStorage.setItem(currentDraftKey(), $('essayInput').value);
   }
 }
 
@@ -385,7 +537,7 @@ function updateWriterMeta() {
 
 function saveDraft() {
   if (!state.currentAssignment) return;
-  localStorage.setItem(draftKey(state.currentAssignment.id), $('essayInput').value);
+  localStorage.setItem(currentDraftKey(), $('essayInput').value);
   showStatus('草稿已保存在本机。');
 }
 
@@ -400,7 +552,7 @@ async function submitEssay() {
 
   const seconds = state.writerStartedAt ? Math.floor((Date.now() - state.writerStartedAt) / 1000) : 0;
   const { error } = await state.client.from('submissions').insert({
-    assignment_id: assignment.id,
+    assignment_id: assignment.id || null,
     question_id: assignment.question_id,
     student_id: state.session.user.id,
     essay,
@@ -414,7 +566,7 @@ async function submitEssay() {
     return;
   }
 
-  localStorage.removeItem(draftKey(assignment.id));
+  localStorage.removeItem(currentDraftKey());
   $('essayInput').value = '';
   $('studentWriter').classList.add('hidden');
   showStatus('已提交。');
@@ -641,6 +793,16 @@ function renderStudentPayments() {
   `).join('');
 }
 
+window.prefillUpgradeRequest = function prefillUpgradeRequest(questionId) {
+  const question = state.questions.find((item) => item.id === questionId);
+  setStudentView('payments');
+  $('paymentType').value = 'question_unlock';
+  $('paymentNote').value = question
+    ? `申请解锁题目：${questionSetLabel(question)} · ${question.title}`
+    : '申请解锁题目';
+  $('paymentNote').focus();
+};
+
 async function createPaymentRequest() {
   const requestType = $('paymentType').value;
   const note = $('paymentNote').value.trim();
@@ -656,7 +818,7 @@ async function createPaymentRequest() {
     return;
   }
   $('paymentNote').value = '';
-  showStatus('付款申请已提交。');
+  showStatus('升级申请已提交。');
   await loadStudentDashboard();
 }
 

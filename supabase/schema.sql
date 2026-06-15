@@ -36,7 +36,7 @@ create table if not exists public.assignments (
 
 create table if not exists public.submissions (
   id uuid primary key default gen_random_uuid(),
-  assignment_id uuid not null references public.assignments(id) on delete cascade,
+  assignment_id uuid references public.assignments(id) on delete cascade,
   question_id uuid not null references public.questions(id) on delete cascade,
   student_id uuid not null references public.profiles(id) on delete cascade,
   essay text not null,
@@ -192,6 +192,8 @@ create policy "students read assigned or unlocked questions"
 on public.questions for select
 to authenticated
 using (
+  is_active
+  or
   exists (
     select 1 from public.assignments a
     where a.question_id = questions.id
@@ -231,12 +233,23 @@ on public.submissions for insert
 to authenticated
 with check (
   student_id = auth.uid()
-  and exists (
-    select 1 from public.assignments a
-    where a.id = assignment_id
-      and a.student_id = auth.uid()
-      and a.question_id = question_id
-      and a.status = 'published'
+  and (
+    exists (
+      select 1 from public.assignments a
+      where a.id = assignment_id
+        and a.student_id = auth.uid()
+        and a.question_id = question_id
+        and a.status = 'published'
+    )
+    or (
+      assignment_id is null
+      and exists (
+        select 1 from public.entitlements e
+        where e.user_id = auth.uid()
+          and e.entitlement_type = 'question'
+          and e.question_id = submissions.question_id
+      )
+    )
   )
 );
 
@@ -250,43 +263,19 @@ drop policy if exists "teachers read assigned submissions" on public.submissions
 create policy "teachers read assigned submissions"
 on public.submissions for select
 to authenticated
-using (
-  public.is_teacher()
-  and exists (
-    select 1 from public.assignments a
-    where a.id = submissions.assignment_id
-      and a.teacher_id = auth.uid()
-  )
-);
+using (public.is_teacher());
 
 drop policy if exists "teachers publish feedback" on public.teacher_feedbacks;
 create policy "teachers publish feedback"
 on public.teacher_feedbacks for insert
 to authenticated
-with check (
-  teacher_id = auth.uid()
-  and public.is_teacher()
-  and exists (
-    select 1 from public.submissions s
-    join public.assignments a on a.id = s.assignment_id
-    where s.id = submission_id
-      and a.teacher_id = auth.uid()
-  )
-);
+with check (teacher_id = auth.uid() and public.is_teacher());
 
 drop policy if exists "teachers read feedback for own assignments" on public.teacher_feedbacks;
 create policy "teachers read feedback for own assignments"
 on public.teacher_feedbacks for select
 to authenticated
-using (
-  public.is_teacher()
-  and exists (
-    select 1 from public.submissions s
-    join public.assignments a on a.id = s.assignment_id
-    where s.id = teacher_feedbacks.submission_id
-      and a.teacher_id = auth.uid()
-  )
-);
+using (public.is_teacher());
 
 drop policy if exists "students read published feedback" on public.teacher_feedbacks;
 create policy "students read published feedback"
@@ -366,4 +355,3 @@ create policy "teachers create notifications"
 on public.notifications for insert
 to authenticated
 with check (public.is_teacher());
-

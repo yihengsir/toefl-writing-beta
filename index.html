@@ -18,8 +18,9 @@
 
   <main class="shell">
     <section class="auth-panel" id="authView">
-      <div class="auth-shell">
-        <div class="auth-intro">
+      <div class="auth-shell single-auth-shell">
+        <section class="auth-card auth-card-unified">
+          <div class="auth-intro compact-intro">
           <div class="auth-kicker">Beta Classroom</div>
           <h1>TOEFL 写作练习与反馈</h1>
           <p>老师分发题目，学生提交习作；历史、反馈和 AI 次数都保存在云端。</p>
@@ -30,57 +31,48 @@
           </div>
         </div>
 
-        <div class="auth-roles">
-          <section class="auth-card auth-card-student">
-            <div class="auth-card-head">
-              <div>
-                <div class="auth-card-label">Student Portal</div>
-                <h2>学生入口</h2>
+          <div class="auth-form-panel">
+            <div id="loginForm">
+              <div class="auth-card-head">
+                <div>
+                  <div class="auth-card-label">Sign in</div>
+                  <h2>登录</h2>
+                </div>
+                <div class="role-chip">Beta</div>
               </div>
-              <div class="role-chip">学生</div>
-            </div>
-
-            <div class="segmented">
-              <button class="active" id="studentLoginModeBtn" type="button">登录</button>
-              <button id="studentRegisterModeBtn" type="button">注册</button>
-            </div>
-
-            <div id="studentLoginForm">
-              <label>邮箱</label>
-              <input id="studentLoginEmail" type="email" autocomplete="email">
-              <label>密码</label>
-              <input id="studentLoginPassword" type="password" autocomplete="current-password">
-              <button id="studentLoginBtn" type="button">进入学生端</button>
+            <label>邮箱</label>
+              <input id="loginEmail" type="email" autocomplete="email">
+            <label>密码</label>
+              <input id="loginPassword" type="password" autocomplete="current-password">
+              <div class="login-actions">
+                <button id="studentLoginBtn" type="button">学生入口</button>
+                <button id="teacherLoginBtn" class="teacher-login-btn" type="button">教师入口</button>
+              </div>
+              <button class="text-button" id="studentRegisterModeBtn" type="button">注册学生账号</button>
             </div>
 
             <div class="hidden" id="studentRegisterForm">
+              <div class="auth-card-head">
+                <div>
+                  <div class="auth-card-label">Student Register</div>
+                  <h2>学生注册</h2>
+                </div>
+                <div class="role-chip">学生</div>
+              </div>
               <label>姓名</label>
               <input id="registerName" type="text" autocomplete="name">
               <label>邮箱</label>
               <input id="registerEmail" type="email" autocomplete="email">
               <label>密码</label>
               <input id="registerPassword" type="password" autocomplete="new-password">
-              <button class="secondary" id="registerBtn" type="button">注册学生账号</button>
-            </div>
-          </section>
-
-          <section class="auth-card auth-card-teacher">
-            <div class="auth-card-head">
-              <div>
-                <div class="auth-card-label">Teacher Console</div>
-                <h2>教师入口</h2>
+              <div class="login-actions">
+                <button class="secondary" id="registerBtn" type="button">注册学生账号</button>
+                <button class="ghost" id="backToLoginBtn" type="button">返回登录</button>
               </div>
-              <div class="role-chip teacher">教师</div>
             </div>
-            <label>邮箱</label>
-            <input id="teacherLoginEmail" type="email" autocomplete="email">
-            <label>密码</label>
-            <input id="teacherLoginPassword" type="password" autocomplete="current-password">
-            <button id="teacherLoginBtn" type="button">进入教师端</button>
-            <p class="microcopy">教师账号由后台开通，用于分发题目、批改、发放 AI 次数。</p>
-          </section>
-        </div>
+          </div>
         <p class="notice auth-notice" id="authNotice"></p>
+        </section>
       </div>
     </section>
 
@@ -105,11 +97,12 @@
               <p>这里只显示老师分发给你的题目。</p>
             </div>
           </div>
-          <div class="question-grid" id="studentAssignments"></div>
+          <div class="library-board" id="studentAssignments"></div>
         </div>
 
         <div class="workspace hidden" id="studentWriter">
           <div class="prompt-box" id="studentPrompt"></div>
+          <div class="writer-pane">
           <div class="writer-meta">
             <span id="wordCount">0 words</span>
             <span id="timerText">00:00</span>
@@ -118,6 +111,7 @@
           <div class="actions">
             <button id="saveDraftBtn" class="secondary" type="button">保存草稿</button>
             <button id="submitEssayBtn" type="button">提交作文</button>
+          </div>
           </div>
         </div>
 
@@ -138,7 +132,7 @@
         <div class="student-view hidden" id="studentPaymentsView">
           <div class="payment-layout">
           <div class="payment-card">
-            <h2>付款申请</h2>
+            <h2>升级</h2>
             <label>申请类型</label>
             <select id="paymentType">
               <option value="ai_feedback">AI 反馈次数</option>
@@ -147,7 +141,7 @@
             </select>
             <label>备注</label>
             <textarea id="paymentNote" rows="4" placeholder="例如：已微信转账，申请 1 次 AI 反馈"></textarea>
-            <button id="createPaymentRequestBtn" class="secondary" type="button">提交申请</button>
+            <button id="createPaymentRequestBtn" class="secondary" type="button">提交升级申请</button>
           </div>
           <div>
             <h2>申请记录</h2>

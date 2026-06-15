@@ -174,6 +174,11 @@ h2 {
   align-items: stretch;
 }
 
+.single-auth-shell {
+  width: min(900px, 100%);
+  grid-template-columns: 1fr;
+}
+
 .auth-intro {
   border: 1px solid #cbd8dd;
   border-radius: 8px;
@@ -258,6 +263,24 @@ h2 {
   padding: 22px;
 }
 
+.auth-card-unified {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(300px, 1fr);
+  gap: 22px;
+  padding: 16px;
+}
+
+.compact-intro {
+  min-height: 390px;
+}
+
+.auth-form-panel {
+  padding: 10px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .auth-card-student {
   border-top: 5px solid #0f766e;
 }
@@ -314,6 +337,35 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.login-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.teacher-login-btn {
+  background: #6d28d9;
+}
+
+.teacher-login-btn:hover {
+  background: #5b21b6;
+}
+
+.text-button {
+  width: 100%;
+  margin-top: 12px;
+  color: var(--accent-strong);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.text-button:hover {
+  color: #123238;
+  background: #f8fafc;
+  border-color: var(--line);
 }
 
 .auth-notice {
@@ -433,6 +485,10 @@ h2 {
   border-radius: 8px;
   padding: 16px;
   background: #fbfdfd;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(320px, 1.05fr);
+  gap: 16px;
+  align-items: stretch;
 }
 
 .prompt-box {
@@ -440,6 +496,14 @@ h2 {
   padding: 12px 14px;
   background: #fff;
   line-height: 1.6;
+  max-height: min(68vh, 720px);
+  overflow: auto;
+}
+
+.writer-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .writer-meta {
@@ -453,6 +517,7 @@ h2 {
 
 .essay {
   min-height: 260px;
+  flex: 1;
 }
 
 .actions {
@@ -486,10 +551,73 @@ h2 {
   margin-bottom: 20px;
 }
 
+.library-board {
+  display: grid;
+  gap: 20px;
+}
+
 .question-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
+}
+
+.compact-grid {
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+
+.library-type-section {
+  border: 1px solid #dbe3ea;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.library-type-section.email {
+  border-top: 5px solid #be185d;
+}
+
+.library-type-section.academic {
+  border-top: 5px solid #0369a1;
+}
+
+.library-type-head,
+.locked-set-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.library-type-head h3 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+
+.library-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.library-counts span,
+.locked-set-head span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: var(--muted);
+  background: #f1f5f9;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.unlock-group {
+  margin-top: 16px;
+}
+
+.unlock-group h4 {
+  margin: 0 0 10px;
+  color: #334155;
+  font-size: 14px;
 }
 
 .question-card {
@@ -524,6 +652,47 @@ h2 {
   border-color: #0d9488;
   transform: translateY(-2px);
   transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.locked-set {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.locked-set-head {
+  padding: 11px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.locked-question-list {
+  display: grid;
+  gap: 1px;
+}
+
+.locked-question-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.locked-question-row span {
+  min-width: 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.locked-question-row button {
+  padding: 7px 10px;
+  font-size: 12px;
 }
 
 .card-topline {
@@ -826,7 +995,9 @@ h2 {
   .detail-grid,
   .payment-layout,
   .auth-shell,
-  .auth-roles {
+  .auth-roles,
+  .auth-card-unified,
+  .workspace {
     grid-template-columns: 1fr;
   }
 
@@ -845,6 +1016,11 @@ h2 {
   }
 
   .history-card-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .locked-question-row,
+  .login-actions {
     grid-template-columns: 1fr;
   }
 }
