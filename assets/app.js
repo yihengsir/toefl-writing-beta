@@ -7,6 +7,7 @@ const state = {
   profile: null,
   students: [],
   questions: [],
+  questionCatalog: [],
   assignments: [],
   submissions: [],
   feedbacks: [],
@@ -269,26 +270,52 @@ async function loadStudentDashboard() {
 
   const userId = state.session.user.id;
 
-  const [assignmentsRes, questionsRes, submissionsRes, feedbacksRes, aiRes, inboxRes, payRes, entRes] = await Promise.all([
+  const [assignmentsRes, submissionsRes, feedbacksRes, aiRes, inboxRes, payRes, entRes, catalogRes] = await Promise.all([
     state.client.from('assignments').select('*, questions(*)').eq('student_id', userId).eq('status', 'published').order('created_at', { ascending: false }),
-    state.client.from('questions').select('*').eq('is_active', true).order('source_date', { ascending: false }).order('import_index', { ascending: false }),
     state.client.from('submissions').select('*, questions(*)').eq('student_id', userId).order('created_at', { ascending: false }),
     state.client.from('teacher_feedbacks').select('*').eq('published', true).order('created_at', { ascending: false }),
     state.client.from('ai_feedbacks').select('*').eq('student_id', userId).order('created_at', { ascending: false }),
     state.client.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(10),
     state.client.from('payment_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-    state.client.from('entitlements').select('*').eq('user_id', userId).order('created_at', { ascending: false })
+    state.client.from('entitlements').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+    state.client.from('question_catalog').select('*').order('source_date', { ascending: false }).order('import_index', { ascending: false })
   ]);
 
   if (assignmentsRes.error) throw assignmentsRes.error;
+  if (submissionsRes.error) throw submissionsRes.error;
+  if (feedbacksRes.error) throw feedbacksRes.error;
+  if (aiRes.error) throw aiRes.error;
+  if (inboxRes.error) throw inboxRes.error;
+  if (payRes.error) throw payRes.error;
+  if (entRes.error) throw entRes.error;
+  if (catalogRes.error) throw catalogRes.error;
+
   state.assignments = assignmentsRes.data || [];
-  state.questions = questionsRes.error ? uniqueQuestionsFromAssignments(state.assignments) : questionsRes.data || [];
   state.submissions = submissionsRes.data || [];
   state.feedbacks = feedbacksRes.data || [];
   state.aiFeedbacks = aiRes.data || [];
   state.notifications = inboxRes.data || [];
   state.paymentRequests = payRes.data || [];
   state.entitlements = entRes.data || [];
+  state.questionCatalog = catalogRes.data || [];
+
+  const entitledQuestionIds = Array.from(unlockedQuestionIds())
+    .filter((id) => !state.assignments.some((assignment) => assignment.question_id === id));
+  let entitledQuestions = [];
+  if (entitledQuestionIds.length) {
+    const { data, error } = await state.client
+      .from('questions')
+      .select('*')
+      .in('id', entitledQuestionIds);
+    if (error) throw error;
+    entitledQuestions = data || [];
+  }
+
+  state.questions = uniqueQuestionRows([
+    ...uniqueQuestionsFromAssignments(state.assignments),
+    ...state.submissions.map((item) => item.questions).filter(Boolean),
+    ...entitledQuestions
+  ]);
 
   renderNav();
   renderStudentStats();
@@ -335,29 +362,61 @@ function renderStudentStats() {
 
 function renderStudentAssignments() {
   const box = $('studentAssignments');
-  const questions = state.questions.length ? state.questions : uniqueQuestionsFromAssignments(state.assignments);
-  if (!questions.length) {
+  const catalog = questionCatalogRows();
+  if (!catalog.length) {
     box.innerHTML = '<div class="empty-state">暂无题库内容。</div>';
     return;
   }
 
   if (!state.libraryCategory) {
-    box.innerHTML = renderQuestionCategoryHome(questions);
+    box.innerHTML = renderQuestionCategoryHome();
     return;
   }
 
-  box.innerHTML = renderQuestionCategoryDetail(state.libraryCategory, questions);
+  box.innerHTML = renderQuestionCategoryDetail(state.libraryCategory, catalog);
 }
 
 function uniqueQuestionsFromAssignments(assignments) {
-  const seen = new Set();
-  return assignments
+  return uniqueQuestionRows(assignments
     .map((item) => item.questions)
+    .filter(Boolean));
+}
+
+function uniqueQuestionRows(questions) {
+  const seen = new Set();
+  return questions
     .filter((question) => {
       if (!question || seen.has(question.id)) return false;
       seen.add(question.id);
       return true;
-    });
+    })
+    .sort(compareQuestionRows);
+}
+
+function questionCatalogRows() {
+  const rows = new Map();
+  state.questionCatalog.forEach((question) => rows.set(question.id, question));
+  state.questions.forEach((question) => {
+    if (!rows.has(question.id)) rows.set(question.id, questionCatalogItem(question));
+  });
+  return Array.from(rows.values()).sort(compareQuestionRows);
+}
+
+function questionCatalogItem(question) {
+  return {
+    id: question.id,
+    import_index: question.import_index,
+    type: question.type,
+    source_date: question.source_date,
+    source_raw: question.source_raw,
+    is_active: question.is_active
+  };
+}
+
+function compareQuestionRows(a, b) {
+  const dateCompare = String(b.source_date || '').localeCompare(String(a.source_date || ''));
+  if (dateCompare) return dateCompare;
+  return Number(b.import_index || 0) - Number(a.import_index || 0);
 }
 
 function unlockedQuestionIds() {
@@ -371,61 +430,16 @@ function unlockedQuestionIds() {
   return ids;
 }
 
-function renderQuestionTypeSection(type, label, questions) {
-  const typedQuestions = questions.filter((question) => question.type === type);
-  if (!typedQuestions.length) return '';
-  const unlockedIds = unlockedQuestionIds();
-  const unlocked = typedQuestions.filter((question) => unlockedIds.has(question.id));
-  const locked = typedQuestions.filter((question) => !unlockedIds.has(question.id));
-  return `
-    <section class="library-type-section ${type === 'email' ? 'email' : 'academic'}">
-      <div class="library-type-head">
-        <div>
-          <div class="auth-card-label">${type === 'email' ? 'Email' : 'Academic'}</div>
-          <h3>${label}</h3>
-        </div>
-        <div class="library-counts">
-          <span>已解锁 ${unlocked.length}</span>
-          <span>待解锁 ${locked.length}</span>
-        </div>
-      </div>
-      <div class="unlock-group">
-        <h4>已解锁</h4>
-        <div class="question-grid compact-grid">
-          ${unlocked.length ? unlocked.map(renderUnlockedQuestionCard).join('') : '<div class="empty-state compact-empty">暂无已解锁题目。</div>'}
-        </div>
-      </div>
-      <div class="unlock-group">
-        <h4>待解锁</h4>
-        ${renderLockedQuestionGroups(locked)}
-      </div>
-    </section>
-  `;
-}
-
-function renderQuestionCategoryHome(questions) {
-  const unlockedIds = unlockedQuestionIds();
+function renderQuestionCategoryHome() {
   const cards = [
-    ['email', 'Email 写作', '邮件写作练习', '7 min'],
-    ['academic', 'Academic Discussion', '学术讨论练习', '10 min']
-  ].map(([type, label, subtitle, timeLabel]) => {
-    const typedQuestions = questions.filter((question) => question.type === type);
-    const unlocked = typedQuestions.filter((question) => unlockedIds.has(question.id));
-    const locked = typedQuestions.length - unlocked.length;
-    return `
-      <button class="category-card ${type === 'email' ? 'email' : 'academic'}" type="button" onclick="openQuestionCategory('${type}')">
-        <span class="auth-card-label">${type === 'email' ? 'Email' : 'Academic'}</span>
-        <strong>${label}</strong>
-        <span>${subtitle}</span>
-        <div class="category-card-stats">
-          <b>${unlocked.length}</b><span>已解锁</span>
-          <b>${locked}</b><span>待解锁</span>
-          <b>${typedQuestions.length}</b><span>总题量</span>
-        </div>
-        <em>${timeLabel}</em>
-      </button>
-    `;
-  }).join('');
+    ['email', 'Email 写作'],
+    ['academic', 'Academic Discussion']
+  ].map(([type, label]) => `
+    <button class="category-card ${type === 'email' ? 'email' : 'academic'}" type="button" onclick="openQuestionCategory('${type}')">
+      <span class="auth-card-label">${type === 'email' ? 'Email' : 'Academic'}</span>
+      <strong>${label}</strong>
+    </button>
+  `).join('');
   return `<div class="category-home">${cards}</div>`;
 }
 
@@ -443,7 +457,9 @@ function renderQuestionCategoryDetail(type, questions) {
   const label = type === 'email' ? 'Email 写作' : 'Academic Discussion';
   const typedQuestions = questions.filter((question) => question.type === type);
   const unlockedIds = unlockedQuestionIds();
-  const unlocked = typedQuestions.filter((question) => unlockedIds.has(question.id));
+  const unlocked = state.questions
+    .filter((question) => question.type === type && unlockedIds.has(question.id))
+    .sort(compareQuestionRows);
   const locked = typedQuestions.filter((question) => !unlockedIds.has(question.id));
   return `
     <section class="category-detail">
@@ -480,6 +496,7 @@ function renderUnlockedQuestionCard(question) {
   const lastSubmission = submissions[0];
   const draftKeyValue = assignment ? draftKey(assignment.id) : questionDraftKey(question.id);
   const hasDraft = Boolean(localStorage.getItem(draftKeyValue));
+  const practiceLabel = hasDraft ? '继续写作' : submissions.length ? '重新练习' : '开始写作';
   return `
     <article class="question-card ${question.type === 'email' ? 'email' : 'academic'}">
       <div class="card-topline">
@@ -496,38 +513,11 @@ function renderUnlockedQuestionCard(question) {
         ${hasDraft ? '<span class="badge draft">有草稿</span>' : ''}
       </div>
       <div class="item-actions">
-        <button type="button" onclick="${assignment ? `startAssignment('${assignment.id}')` : `startUnlockedQuestion('${question.id}')`}">${hasDraft ? '继续写作' : '开始写作'}</button>
+        <button type="button" onclick="restartPractice('${question.id}', '${assignment?.id || ''}')">${practiceLabel}</button>
         ${submissions.length ? `<button type="button" class="secondary" onclick="openStudentSubmissionDetail('${lastSubmission.id}')">查看历史</button>` : ''}
       </div>
     </article>
   `;
-}
-
-function renderLockedQuestionGroups(questions) {
-  if (!questions.length) return '<div class="empty-state compact-empty">暂无待解锁题目。</div>';
-  const groups = new Map();
-  questions.forEach((question) => {
-    const label = questionSetLabel(question);
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label).push(question);
-  });
-
-  return Array.from(groups.entries()).map(([label, rows]) => `
-    <div class="locked-set">
-      <div class="locked-set-head">
-        <b>${escapeHtml(label)}</b>
-        <span>${rows.length} 题</span>
-      </div>
-      <div class="locked-question-list">
-        ${rows.map((question) => `
-          <div class="locked-question-row">
-            <span>${escapeHtml(question.title)}</span>
-            <button class="secondary" type="button" onclick="prefillUpgradeRequest('${question.id}')">升级解锁</button>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
 }
 
 function renderLockedQuestionCards(questions) {
@@ -544,13 +534,15 @@ function renderLockedQuestionCards(questions) {
       <article class="locked-stack-card ${primary.type === 'email' ? 'email' : 'academic'}" style="--stack-offset:${index % 4};">
         <div class="card-topline">
           <span class="badge">待解锁</span>
-          <span>${escapeHtml(label)}</span>
-          <span>${rows.length} 题</span>
+          <span class="locked-visible-date">${escapeHtml(label)}</span>
         </div>
-        <div class="item-title">${escapeHtml(primary.title || 'Untitled')}</div>
-        <p class="card-summary">${questionSummary(primary)}</p>
+        <div class="locked-glass-panel" aria-hidden="true">
+          <div class="locked-placeholder locked-placeholder-title"></div>
+          <div class="locked-placeholder"></div>
+          <div class="locked-placeholder short"></div>
+        </div>
         <div class="locked-card-foot">
-          <span>${rows.length > 1 ? `本套还有 ${rows.length - 1} 题` : '单题'}</span>
+          <span>题目内容已隐藏</span>
           <button class="secondary" type="button" onclick="prefillUpgradeRequest('${primary.id}')">升级解锁</button>
         </div>
       </article>
@@ -594,8 +586,12 @@ window.startAssignment = function startAssignment(assignmentId) {
 };
 
 window.startUnlockedQuestion = function startUnlockedQuestion(questionId) {
-  const question = state.questions.find((item) => item.id === questionId);
-  if (!question) return;
+  const question = state.questions.find((item) => item.id === questionId)
+    || state.submissions.find((item) => item.question_id === questionId)?.questions;
+  if (!question) {
+    showStatus('这道题尚未解锁，暂时不能练习。', 'warning');
+    return;
+  }
   setStudentView('writing');
   state.currentAssignment = {
     id: null,
@@ -612,6 +608,12 @@ window.startUnlockedQuestion = function startUnlockedQuestion(questionId) {
   clearInterval(state.writerTimer);
   state.writerTimer = setInterval(updateWriterMeta, 1000);
   $('essayInput').focus();
+};
+
+window.restartPractice = function restartPractice(questionId, assignmentId = '') {
+  $('studentHistoryDetail').classList.add('hidden');
+  if (assignmentId) window.startAssignment(assignmentId);
+  else window.startUnlockedQuestion(questionId);
 };
 
 function draftKey(assignmentId) {
@@ -719,6 +721,7 @@ function renderStudentHistory() {
         <p class="history-excerpt">${escapeHtml(submission.essay).slice(0, 340)}${submission.essay.length > 340 ? '...' : ''}</p>
         <div class="item-actions">
           <button type="button" onclick="openStudentSubmissionDetail('${submission.id}')">查看反馈</button>
+          <button type="button" class="secondary" onclick="restartPractice('${submission.question_id}', '${submission.assignment_id || ''}')">重新练习</button>
           ${renderAiButton(submission)}
         </div>
       </article>
@@ -781,7 +784,10 @@ window.openStudentSubmissionDetail = function openStudentSubmissionDetail(submis
           <span>${formatDuration(submission.time_used_seconds)}</span>
         </div>
       </div>
-      <button class="ghost" type="button" onclick="closeStudentSubmissionDetail()">收起</button>
+      <div class="detail-actions">
+        <button class="secondary" type="button" onclick="restartPractice('${submission.question_id}', '${submission.assignment_id || ''}')">重新练习</button>
+        <button class="ghost" type="button" onclick="closeStudentSubmissionDetail()">收起</button>
+      </div>
     </div>
     <div class="detail-grid">
       <section>
@@ -900,11 +906,12 @@ function renderStudentPayments() {
 }
 
 window.prefillUpgradeRequest = function prefillUpgradeRequest(questionId) {
-  const question = state.questions.find((item) => item.id === questionId);
+  const question = questionCatalogRows().find((item) => item.id === questionId);
+  const typeLabel = question?.type === 'email' ? 'Email 写作' : question?.type === 'academic' ? 'Academic Discussion' : '题目';
   setStudentView('payments');
   $('paymentType').value = 'question_unlock';
   $('paymentNote').value = question
-    ? `申请解锁题目：${questionSetLabel(question)} · ${question.title}`
+    ? `申请解锁题目：${questionSetLabel(question)} · ${typeLabel}`
     : '申请解锁题目';
   $('paymentNote').focus();
 };

@@ -113,6 +113,25 @@ create index if not exists idx_submissions_assignment on public.submissions(assi
 create index if not exists idx_entitlements_user on public.entitlements(user_id, entitlement_type);
 create index if not exists idx_notifications_user on public.notifications(user_id, created_at desc);
 
+drop view if exists public.question_catalog;
+create view public.question_catalog as
+select
+  id,
+  import_index,
+  type,
+  source_date,
+  source_raw,
+  is_active
+from public.questions
+where is_active = true;
+
+revoke all on table public.question_catalog from public;
+revoke all on table public.question_catalog from anon;
+grant select on table public.question_catalog to authenticated;
+
+comment on view public.question_catalog is
+  'Safe locked-question catalogue. Excludes title and prompt_payload so locked prompts are never sent to the frontend.';
+
 create or replace function public.current_app_role()
 returns text
 language sql
@@ -187,13 +206,12 @@ on public.questions for select
 to authenticated
 using (public.is_teacher());
 
+drop policy if exists "authenticated read active question catalogue" on public.questions;
 drop policy if exists "students read assigned or unlocked questions" on public.questions;
 create policy "students read assigned or unlocked questions"
 on public.questions for select
 to authenticated
 using (
-  is_active
-  or
   exists (
     select 1 from public.assignments a
     where a.question_id = questions.id
