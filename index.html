@@ -18,27 +18,14 @@
 
   <main class="shell">
     <section class="auth-panel" id="authView">
-      <div class="auth-shell single-auth-shell">
-        <section class="auth-card auth-card-unified">
-          <div class="auth-intro compact-intro">
-          <div class="auth-kicker">Beta Classroom</div>
-          <h1>TOEFL 写作练习与反馈</h1>
-          <p>老师分发题目，学生提交习作；历史、反馈和 AI 次数都保存在云端。</p>
-          <div class="auth-metrics">
-            <div><b>156</b><span>题库题目</span></div>
-            <div><b>2</b><span>角色入口</span></div>
-            <div><b>1</b><span>教师维护</span></div>
-          </div>
-        </div>
-
-          <div class="auth-form-panel">
+      <div class="auth-shell simple-auth-shell">
+        <section class="auth-card simple-auth-card">
             <div id="loginForm">
               <div class="auth-card-head">
                 <div>
-                  <div class="auth-card-label">Sign in</div>
-                  <h2>登录</h2>
+                <div class="auth-card-label">TOEFL Writing Beta</div>
+                <h1>登录</h1>
                 </div>
-                <div class="role-chip">Beta</div>
               </div>
             <label>邮箱</label>
               <input id="loginEmail" type="email" autocomplete="email">
@@ -70,7 +57,6 @@
                 <button class="ghost" id="backToLoginBtn" type="button">返回登录</button>
               </div>
             </div>
-          </div>
         <p class="notice auth-notice" id="authNotice"></p>
         </section>
       </div>
@@ -80,7 +66,7 @@
       <div class="status" id="statusBox"></div>
 
       <section class="panel hidden" id="studentDashboard">
-        <div class="panel-head">
+        <div class="panel-head" id="studentPanelHead">
           <div>
             <h1>学生端</h1>
             <p class="panel-subtitle">查看老师分发的题目、历史习作和反馈。</p>
@@ -98,21 +84,6 @@
             </div>
           </div>
           <div class="library-board" id="studentAssignments"></div>
-        </div>
-
-        <div class="workspace hidden" id="studentWriter">
-          <div class="prompt-box" id="studentPrompt"></div>
-          <div class="writer-pane">
-          <div class="writer-meta">
-            <span id="wordCount">0 words</span>
-            <span id="timerText">00:00</span>
-          </div>
-          <textarea id="essayInput" class="essay" spellcheck="false"></textarea>
-          <div class="actions">
-            <button id="saveDraftBtn" class="secondary" type="button">保存草稿</button>
-            <button id="submitEssayBtn" type="button">提交作文</button>
-          </div>
-          </div>
         </div>
 
         <div class="student-view hidden" id="studentHistoryView">
@@ -147,6 +118,30 @@
             <h2>申请记录</h2>
             <div class="list compact" id="studentPaymentRequests"></div>
           </div>
+          </div>
+        </div>
+
+        <div class="student-view hidden" id="studentWritingView">
+          <div class="writing-page-head">
+            <button class="ghost" id="backToLibraryBtn" type="button">返回题库</button>
+            <div>
+              <h2 id="writingTitle">写作练习</h2>
+              <p>左侧阅读题目，右侧完成写作。</p>
+            </div>
+          </div>
+          <div class="workspace" id="studentWriter">
+            <div class="prompt-box" id="studentPrompt"></div>
+            <div class="writer-pane">
+            <div class="writer-meta">
+              <span id="wordCount">0 words</span>
+              <span id="timerText">00:00</span>
+            </div>
+            <textarea id="essayInput" class="essay" spellcheck="false"></textarea>
+            <div class="actions">
+              <button id="saveDraftBtn" class="secondary" type="button">保存草稿</button>
+              <button id="submitEssayBtn" type="button">提交作文</button>
+            </div>
+            </div>
           </div>
         </div>
       </section>

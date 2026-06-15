@@ -175,7 +175,12 @@ h2 {
 }
 
 .single-auth-shell {
-  width: min(900px, 100%);
+  width: min(440px, 100%);
+  grid-template-columns: 1fr;
+}
+
+.simple-auth-shell {
+  width: min(440px, 100%);
   grid-template-columns: 1fr;
 }
 
@@ -261,6 +266,10 @@ h2 {
 .auth-card {
   width: 100%;
   padding: 22px;
+}
+
+.simple-auth-card {
+  padding: 26px;
 }
 
 .auth-card-unified {
@@ -556,6 +565,106 @@ h2 {
   gap: 20px;
 }
 
+.category-home {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.category-card {
+  position: relative;
+  min-height: 230px;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 10px;
+  border: 2px solid #dbe3ea;
+  border-radius: 8px;
+  padding: 22px;
+  color: var(--ink);
+  background: #fff;
+  text-align: left;
+  box-shadow: 0 18px 0 -13px #dbe3ea, 0 26px 44px -34px rgba(15, 23, 42, 0.7);
+}
+
+.category-card::before {
+  content: "";
+  position: absolute;
+  inset: -2px auto -2px -2px;
+  width: 9px;
+  border-radius: 8px 0 0 8px;
+  background: #0369a1;
+}
+
+.category-card.email::before {
+  background: #be185d;
+}
+
+.category-card:hover {
+  color: var(--ink);
+  background: #fff;
+  border-color: #0d9488;
+  transform: translateY(-3px);
+}
+
+.category-card strong {
+  font-size: 28px;
+  line-height: 1.05;
+}
+
+.category-card > span:not(.auth-card-label) {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.category-card em {
+  color: var(--accent-strong);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.category-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.category-card-stats b,
+.category-card-stats span {
+  display: block;
+}
+
+.category-card-stats b {
+  font-size: 24px;
+}
+
+.category-card-stats span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.category-detail {
+  display: grid;
+  gap: 18px;
+}
+
+.category-detail-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+}
+
+.category-detail-head h3 {
+  margin: 2px 0 0;
+  font-size: 22px;
+}
+
 .question-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -693,6 +802,73 @@ h2 {
 .locked-question-row button {
   padding: 7px 10px;
   font-size: 12px;
+}
+
+.locked-card-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
+}
+
+.locked-stack-card {
+  position: relative;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px 16px 16px 22px;
+  background: #fff;
+  box-shadow:
+    calc(6px + var(--stack-offset) * 1px) calc(7px + var(--stack-offset) * 1px) 0 -2px #eef2f7,
+    calc(12px + var(--stack-offset) * 1px) calc(14px + var(--stack-offset) * 1px) 0 -4px #f6f8fb,
+    0 18px 30px -30px rgba(15, 23, 42, 0.7);
+}
+
+.locked-stack-card::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -2px;
+  width: 8px;
+  border-radius: 8px 0 0 8px;
+  background: #0369a1;
+  opacity: 0.62;
+}
+
+.locked-stack-card.email::before {
+  background: #be185d;
+}
+
+.locked-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.writing-page-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.writing-page-head h2 {
+  margin-bottom: 4px;
+}
+
+.writing-page-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .card-topline {
@@ -994,6 +1170,8 @@ h2 {
   .student-stats,
   .detail-grid,
   .payment-layout,
+  .category-home,
+  .category-detail-head,
   .auth-shell,
   .auth-roles,
   .auth-card-unified,
@@ -1020,7 +1198,13 @@ h2 {
   }
 
   .locked-question-row,
-  .login-actions {
+  .login-actions,
+  .locked-card-foot {
     grid-template-columns: 1fr;
+  }
+
+  .locked-card-foot {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
