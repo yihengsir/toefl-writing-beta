@@ -16,6 +16,9 @@ const state = {
   entitlements: [],
   currentAssignment: null,
   currentReviewSubmission: null,
+  studentView: 'library',
+  studentHistoryIndex: 0,
+  messageDrawerOpen: false,
   writerStartedAt: null,
   writerTimer: null
 };
@@ -79,7 +82,10 @@ async function init() {
 }
 
 function bindEvents() {
-  $('loginBtn').addEventListener('click', login);
+  $('studentLoginBtn').addEventListener('click', () => login('student'));
+  $('teacherLoginBtn').addEventListener('click', () => login('teacher'));
+  $('studentLoginModeBtn').addEventListener('click', () => setStudentAuthMode('login'));
+  $('studentRegisterModeBtn').addEventListener('click', () => setStudentAuthMode('register'));
   $('registerBtn').addEventListener('click', registerStudent);
   $('logoutBtn').addEventListener('click', logout);
   $('refreshStudentBtn').addEventListener('click', loadStudentDashboard);
@@ -92,6 +98,19 @@ function bindEvents() {
   $('grantEntitlementBtn').addEventListener('click', grantEntitlement);
   $('closeReviewBtn').addEventListener('click', closeReview);
   $('publishFeedbackBtn').addEventListener('click', publishFeedback);
+  $('closeMessagesBtn').addEventListener('click', closeMessages);
+  $('messageDrawerBackdrop').addEventListener('click', (event) => {
+    if (event.target === $('messageDrawerBackdrop')) closeMessages();
+  });
+}
+
+function setStudentAuthMode(mode) {
+  const isLogin = mode === 'login';
+  $('studentLoginModeBtn').classList.toggle('active', isLogin);
+  $('studentRegisterModeBtn').classList.toggle('active', !isLogin);
+  $('studentLoginForm').classList.toggle('hidden', !isLogin);
+  $('studentRegisterForm').classList.toggle('hidden', isLogin);
+  showAuthNotice('');
 }
 
 async function bootSession() {
@@ -105,6 +124,7 @@ async function bootSession() {
     $('logoutBtn').classList.add('hidden');
     $('nav').innerHTML = '';
     $('userLine').textContent = '未登录';
+    closeMessages();
     return;
   }
 
@@ -138,18 +158,41 @@ function renderNav() {
   const nav = $('nav');
   nav.innerHTML = '';
   const role = state.profile?.role;
-  const label = role === 'teacher' ? '教师端' : '学生端';
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'active';
-  btn.textContent = label;
-  nav.appendChild(btn);
+  if (role === 'teacher') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'active';
+    btn.textContent = '教师端';
+    nav.appendChild(btn);
+    return;
+  }
+
+  const unreadCount = state.notifications.filter((item) => !item.read_at).length;
+  [
+    ['library', '题库'],
+    ['history', '历史'],
+    ['payments', '付费申请']
+  ].forEach(([view, label]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = state.studentView === view ? 'active' : '';
+    btn.textContent = label;
+    btn.addEventListener('click', () => setStudentView(view));
+    nav.appendChild(btn);
+  });
+
+  const messageBtn = document.createElement('button');
+  messageBtn.type = 'button';
+  messageBtn.className = state.messageDrawerOpen ? 'active' : '';
+  messageBtn.textContent = unreadCount ? `消息 ${unreadCount}` : '消息';
+  messageBtn.addEventListener('click', toggleMessages);
+  nav.appendChild(messageBtn);
 }
 
-async function login() {
+async function login(role) {
   showAuthNotice('');
-  const email = $('loginEmail').value.trim();
-  const password = $('loginPassword').value;
+  const email = $(role === 'teacher' ? 'teacherLoginEmail' : 'studentLoginEmail').value.trim();
+  const password = $(role === 'teacher' ? 'teacherLoginPassword' : 'studentLoginPassword').value;
   const { error } = await state.client.auth.signInWithPassword({ email, password });
   if (error) showAuthNotice(error.message);
 }
@@ -223,40 +266,92 @@ async function loadStudentDashboard() {
   state.paymentRequests = payRes.data || [];
   state.entitlements = entRes.data || [];
 
+  renderNav();
+  renderStudentStats();
   renderStudentAssignments();
-  renderStudentSubmissions();
+  renderStudentHistory();
   renderStudentInbox();
   renderStudentPayments();
+  setStudentView(state.studentView);
   showStatus('');
+}
+
+function setStudentView(view) {
+  state.studentView = view;
+  $('studentLibraryView').classList.toggle('hidden', view !== 'library');
+  $('studentHistoryView').classList.toggle('hidden', view !== 'history');
+  $('studentPaymentsView').classList.toggle('hidden', view !== 'payments');
+  if (view !== 'library') {
+    $('studentWriter').classList.add('hidden');
+    clearInterval(state.writerTimer);
+  }
+  renderNav();
+}
+
+window.setStudentView = setStudentView;
+
+function renderStudentStats() {
+  const submittedAssignmentIds = new Set(state.submissions.map((item) => item.assignment_id));
+  const aiCredits = state.entitlements
+    .filter((item) => item.entitlement_type === 'ai_feedback')
+    .reduce((sum, item) => sum + Number(item.remaining_uses || 0), 0);
+  const feedbackCount = state.feedbacks.length + state.aiFeedbacks.filter((item) => item.status === 'completed').length;
+  $('studentStats').innerHTML = `
+    <div class="stat">可练题目<b>${state.assignments.length}</b></div>
+    <div class="stat">已提交<b>${state.submissions.length}</b></div>
+    <div class="stat">已完成题目<b>${submittedAssignmentIds.size}</b></div>
+    <div class="stat">AI 次数<b>${aiCredits}</b></div>
+    <div class="stat">反馈记录<b>${feedbackCount}</b></div>
+  `;
 }
 
 function renderStudentAssignments() {
   const box = $('studentAssignments');
   if (!state.assignments.length) {
-    box.innerHTML = '<div class="item">暂无分发题目。</div>';
+    box.innerHTML = '<div class="empty-state">暂无分发题目。</div>';
     return;
   }
   box.innerHTML = state.assignments.map((assignment) => {
     const q = assignment.questions;
+    const submissions = state.submissions.filter((item) => item.assignment_id === assignment.id);
+    const lastSubmission = submissions[0];
+    const hasDraft = Boolean(localStorage.getItem(draftKey(assignment.id)));
     return `
-      <div class="item">
-        <div class="item-title">${escapeHtml(q?.title || 'Untitled')}</div>
-        <div class="meta">
+      <article class="question-card ${q?.type === 'email' ? 'email' : 'academic'}">
+        <div class="card-topline">
           <span class="badge">${escapeHtml(q?.type || '')}</span>
-          <span>${Math.round((q?.time_limit_seconds || 0) / 60)} 分钟</span>
+          <span>${Math.round((q?.time_limit_seconds || 0) / 60)} min</span>
+        </div>
+        <div class="item-title">${escapeHtml(q?.title || 'Untitled')}</div>
+        <p class="card-summary">${questionSummary(q)}</p>
+        <div class="meta">
           <span>${formatDate(assignment.created_at)}</span>
+          ${submissions.length ? `<span>${submissions.length} 次提交</span>` : '<span>未提交</span>'}
+          ${lastSubmission ? `<span>上次 ${lastSubmission.word_count} words</span>` : ''}
+          ${assignment.allow_ai_feedback ? '<span class="badge">可用 AI</span>' : ''}
+          ${hasDraft ? '<span class="badge draft">有草稿</span>' : ''}
         </div>
         <div class="item-actions">
-          <button type="button" onclick="startAssignment('${assignment.id}')">开始写作</button>
+          <button type="button" onclick="startAssignment('${assignment.id}')">${hasDraft ? '继续写作' : '开始写作'}</button>
+          ${submissions.length ? `<button type="button" class="secondary" onclick="openStudentSubmissionDetail('${lastSubmission.id}')">查看历史</button>` : ''}
         </div>
-      </div>
+      </article>
     `;
   }).join('');
+}
+
+function questionSummary(question) {
+  const payload = question?.prompt_payload || {};
+  const text = question?.type === 'academic'
+    ? payload.professor?.text
+    : payload.context;
+  return escapeHtml(String(text || '').slice(0, 180) + (String(text || '').length > 180 ? '...' : ''));
 }
 
 window.startAssignment = function startAssignment(assignmentId) {
   const assignment = state.assignments.find((item) => item.id === assignmentId);
   if (!assignment) return;
+  setStudentView('library');
   state.currentAssignment = assignment;
   state.writerStartedAt = Date.now();
   $('studentWriter').classList.remove('hidden');
@@ -326,35 +421,163 @@ async function submitEssay() {
   await loadStudentDashboard();
 }
 
-function renderStudentSubmissions() {
-  const box = $('studentSubmissions');
+function renderStudentHistory() {
+  const box = $('studentHistoryDeck');
+  const controls = $('studentHistoryControls');
   if (!state.submissions.length) {
-    box.innerHTML = '<div class="item">暂无提交。</div>';
+    box.innerHTML = '<div class="empty-state">暂无历史习作。</div>';
+    controls.innerHTML = '';
+    $('studentHistoryDetail').classList.add('hidden');
     return;
   }
 
-  box.innerHTML = state.submissions.map((submission) => {
+  if (state.studentHistoryIndex >= state.submissions.length) state.studentHistoryIndex = 0;
+
+  const visibleOffsets = Array.from({ length: Math.min(3, state.submissions.length) }, (_, index) => index);
+  box.innerHTML = visibleOffsets.map((offset) => {
+    const index = state.studentHistoryIndex + offset;
+    if (index >= state.submissions.length) return '';
+    const submission = state.submissions[index];
     const teacherFeedback = state.feedbacks.find((item) => item.submission_id === submission.id);
     const aiFeedback = state.aiFeedbacks.find((item) => item.submission_id === submission.id && item.status === 'completed');
-    const canAi = state.entitlements.some((item) => item.entitlement_type === 'ai_feedback' && Number(item.remaining_uses || 0) > 0);
+    const cls = offset === 0 ? 'is-top' : offset === 1 ? 'is-second' : 'is-third';
     return `
-      <div class="item">
+      <article class="history-card ${cls}">
+        <div class="history-card-head">
+          <div>
+            <div class="card-topline">
+              <span class="badge">${escapeHtml(submission.questions?.type || 'practice')}</span>
+              <span>${formatDate(submission.created_at)}</span>
+            </div>
+            <div class="item-title">${escapeHtml(submission.questions?.title || 'Submission')}</div>
+          </div>
+          <div class="score-pill">${teacherFeedback?.score ?? aiFeedback?.score ?? '--'}</div>
+        </div>
+        <div class="history-card-stats">
+          <div><span>Words</span><b>${submission.word_count}</b></div>
+          <div><span>Time</span><b>${formatDuration(submission.time_used_seconds)}</b></div>
+          <div><span>Feedback</span><b>${feedbackLabel(teacherFeedback, aiFeedback)}</b></div>
+        </div>
+        <p class="history-excerpt">${escapeHtml(submission.essay).slice(0, 340)}${submission.essay.length > 340 ? '...' : ''}</p>
+        <div class="item-actions">
+          <button type="button" onclick="openStudentSubmissionDetail('${submission.id}')">查看反馈</button>
+          ${renderAiButton(submission)}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  controls.innerHTML = `
+    <button class="ghost" type="button" onclick="rotateStudentHistory('prev')">上一张</button>
+    <span>${state.studentHistoryIndex + 1} / ${state.submissions.length}</span>
+    <button class="ghost" type="button" onclick="rotateStudentHistory('next')">下一张</button>
+  `;
+}
+
+function renderAiButton(submission) {
+  const aiFeedback = state.aiFeedbacks.find((item) => item.submission_id === submission.id && item.status === 'completed');
+  if (aiFeedback) return '<span class="badge">AI 已反馈</span>';
+  const assignment = state.assignments.find((item) => item.id === submission.assignment_id);
+  const hasCredit = state.entitlements.some((item) => item.entitlement_type === 'ai_feedback' && Number(item.remaining_uses || 0) > 0);
+  const canRequest = assignment?.allow_ai_feedback && hasCredit;
+  const title = !assignment?.allow_ai_feedback ? '这道题未开放 AI 反馈' : !hasCredit ? '没有可用 AI 次数' : '';
+  return `<button type="button" class="secondary" onclick="requestAiFeedback('${submission.id}')" ${canRequest ? '' : 'disabled'} title="${title}">AI 反馈</button>`;
+}
+
+function feedbackLabel(teacherFeedback, aiFeedback) {
+  if (teacherFeedback && aiFeedback) return '老师 + AI';
+  if (teacherFeedback) return '老师';
+  if (aiFeedback) return 'AI';
+  return '待反馈';
+}
+
+function formatDuration(seconds) {
+  const value = Number(seconds || 0);
+  const m = Math.floor(value / 60);
+  const s = value % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+window.rotateStudentHistory = function rotateStudentHistory(direction) {
+  if (!state.submissions.length) return;
+  if (direction === 'next') state.studentHistoryIndex = (state.studentHistoryIndex + 1) % state.submissions.length;
+  else state.studentHistoryIndex = (state.studentHistoryIndex - 1 + state.submissions.length) % state.submissions.length;
+  renderStudentHistory();
+};
+
+window.openStudentSubmissionDetail = function openStudentSubmissionDetail(submissionId) {
+  const submission = state.submissions.find((item) => item.id === submissionId);
+  if (!submission) return;
+  setStudentView('history');
+  const teacherFeedback = state.feedbacks.find((item) => item.submission_id === submission.id);
+  const aiFeedback = state.aiFeedbacks.find((item) => item.submission_id === submission.id && item.status === 'completed');
+  const detail = $('studentHistoryDetail');
+  detail.classList.remove('hidden');
+  detail.innerHTML = `
+    <div class="detail-head">
+      <div>
         <div class="item-title">${escapeHtml(submission.questions?.title || 'Submission')}</div>
         <div class="meta">
           <span>${submission.word_count} words</span>
           <span>${formatDate(submission.created_at)}</span>
-          ${teacherFeedback ? '<span class="badge">老师已反馈</span>' : ''}
-          ${aiFeedback ? '<span class="badge">AI 已反馈</span>' : ''}
-        </div>
-        ${teacherFeedback ? `<p><b>老师评分：</b>${escapeHtml(teacherFeedback.score ?? '')}</p><p>${escapeHtml(teacherFeedback.summary || '')}</p>` : ''}
-        ${aiFeedback ? `<p><b>AI 评分：</b>${escapeHtml(aiFeedback.score ?? '')}</p><p>${escapeHtml(aiFeedback.result_json?.summary || 'AI feedback saved.')}</p>` : ''}
-        <div class="item-actions">
-          <button type="button" class="secondary" onclick="requestAiFeedback('${submission.id}')" ${canAi ? '' : 'disabled'}>AI 反馈</button>
+          <span>${formatDuration(submission.time_used_seconds)}</span>
         </div>
       </div>
-    `;
-  }).join('');
+      <button class="ghost" type="button" onclick="closeStudentSubmissionDetail()">收起</button>
+    </div>
+    <div class="detail-grid">
+      <section>
+        <h3>原文</h3>
+        <div class="essay-preview">${escapeHtml(submission.essay)}</div>
+      </section>
+      <section>
+        <h3>反馈</h3>
+        ${renderTeacherFeedbackDetail(teacherFeedback)}
+        ${renderAiFeedbackDetail(aiFeedback)}
+        ${!teacherFeedback && !aiFeedback ? '<div class="empty-state compact-empty">暂无反馈。</div>' : ''}
+      </section>
+    </div>
+  `;
+  detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+function renderTeacherFeedbackDetail(feedback) {
+  if (!feedback) return '';
+  return `
+    <div class="feedback-block teacher-feedback">
+      <div class="feedback-title">老师反馈 <b>${escapeHtml(feedback.score ?? '--')}</b></div>
+      <p>${escapeHtml(feedback.summary || '')}</p>
+    </div>
+  `;
 }
+
+function renderAiFeedbackDetail(feedback) {
+  if (!feedback) return '';
+  const result = feedback.result_json || {};
+  return `
+    <div class="feedback-block ai-feedback">
+      <div class="feedback-title">AI 反馈 <b>${escapeHtml(feedback.score ?? result.score ?? '--')}</b></div>
+      <p>${escapeHtml(result.summary || 'AI feedback saved.')}</p>
+      ${renderFeedbackList('语法问题', result.grammar_errors)}
+      ${renderFeedbackList('表达问题', result.expression_errors)}
+      ${result.revised_essay ? `<h4>修改后范文</h4><div class="essay-preview mini">${escapeHtml(result.revised_essay)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderFeedbackList(title, rows) {
+  if (!Array.isArray(rows) || !rows.length) return '';
+  return `
+    <h4>${title}</h4>
+    <ul class="feedback-list">
+      ${rows.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+window.closeStudentSubmissionDetail = function closeStudentSubmissionDetail() {
+  $('studentHistoryDetail').classList.add('hidden');
+};
 
 window.requestAiFeedback = async function requestAiFeedback(submissionId) {
   showStatus('正在请求 AI 反馈...');
@@ -384,6 +607,23 @@ function renderStudentInbox() {
       <div class="meta"><span>${formatDate(item.created_at)}</span></div>
     </div>
   `).join('');
+}
+
+function toggleMessages() {
+  if (state.messageDrawerOpen) closeMessages();
+  else openMessages();
+}
+
+function openMessages() {
+  state.messageDrawerOpen = true;
+  $('messageDrawerBackdrop').classList.remove('hidden');
+  renderNav();
+}
+
+function closeMessages() {
+  state.messageDrawerOpen = false;
+  $('messageDrawerBackdrop').classList.add('hidden');
+  if (state.profile) renderNav();
 }
 
 function renderStudentPayments() {
@@ -670,4 +910,3 @@ init().catch((error) => {
   showStatus(error.message || String(error), 'danger');
   showAuthNotice(error.message || String(error));
 });
-

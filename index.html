@@ -18,23 +18,69 @@
 
   <main class="shell">
     <section class="auth-panel" id="authView">
-      <div class="auth-card">
-        <h1>登录</h1>
-        <label>邮箱</label>
-        <input id="loginEmail" type="email" autocomplete="email">
-        <label>密码</label>
-        <input id="loginPassword" type="password" autocomplete="current-password">
-        <button id="loginBtn" type="button">登录</button>
-        <div class="divider"></div>
-        <h2>学生注册</h2>
-        <label>姓名</label>
-        <input id="registerName" type="text" autocomplete="name">
-        <label>邮箱</label>
-        <input id="registerEmail" type="email" autocomplete="email">
-        <label>密码</label>
-        <input id="registerPassword" type="password" autocomplete="new-password">
-        <button class="secondary" id="registerBtn" type="button">注册学生账号</button>
-        <p class="notice" id="authNotice"></p>
+      <div class="auth-shell">
+        <div class="auth-intro">
+          <div class="auth-kicker">Beta Classroom</div>
+          <h1>TOEFL 写作练习与反馈</h1>
+          <p>老师分发题目，学生提交习作；历史、反馈和 AI 次数都保存在云端。</p>
+          <div class="auth-metrics">
+            <div><b>156</b><span>题库题目</span></div>
+            <div><b>2</b><span>角色入口</span></div>
+            <div><b>1</b><span>教师维护</span></div>
+          </div>
+        </div>
+
+        <div class="auth-roles">
+          <section class="auth-card auth-card-student">
+            <div class="auth-card-head">
+              <div>
+                <div class="auth-card-label">Student Portal</div>
+                <h2>学生入口</h2>
+              </div>
+              <div class="role-chip">学生</div>
+            </div>
+
+            <div class="segmented">
+              <button class="active" id="studentLoginModeBtn" type="button">登录</button>
+              <button id="studentRegisterModeBtn" type="button">注册</button>
+            </div>
+
+            <div id="studentLoginForm">
+              <label>邮箱</label>
+              <input id="studentLoginEmail" type="email" autocomplete="email">
+              <label>密码</label>
+              <input id="studentLoginPassword" type="password" autocomplete="current-password">
+              <button id="studentLoginBtn" type="button">进入学生端</button>
+            </div>
+
+            <div class="hidden" id="studentRegisterForm">
+              <label>姓名</label>
+              <input id="registerName" type="text" autocomplete="name">
+              <label>邮箱</label>
+              <input id="registerEmail" type="email" autocomplete="email">
+              <label>密码</label>
+              <input id="registerPassword" type="password" autocomplete="new-password">
+              <button class="secondary" id="registerBtn" type="button">注册学生账号</button>
+            </div>
+          </section>
+
+          <section class="auth-card auth-card-teacher">
+            <div class="auth-card-head">
+              <div>
+                <div class="auth-card-label">Teacher Console</div>
+                <h2>教师入口</h2>
+              </div>
+              <div class="role-chip teacher">教师</div>
+            </div>
+            <label>邮箱</label>
+            <input id="teacherLoginEmail" type="email" autocomplete="email">
+            <label>密码</label>
+            <input id="teacherLoginPassword" type="password" autocomplete="current-password">
+            <button id="teacherLoginBtn" type="button">进入教师端</button>
+            <p class="microcopy">教师账号由后台开通，用于分发题目、批改、发放 AI 次数。</p>
+          </section>
+        </div>
+        <p class="notice auth-notice" id="authNotice"></p>
       </div>
     </section>
 
@@ -43,18 +89,23 @@
 
       <section class="panel hidden" id="studentDashboard">
         <div class="panel-head">
-          <h1>学生端</h1>
+          <div>
+            <h1>学生端</h1>
+            <p class="panel-subtitle">查看老师分发的题目、历史习作和反馈。</p>
+          </div>
           <button class="ghost" id="refreshStudentBtn" type="button">刷新</button>
         </div>
-        <div class="grid two">
-          <div>
-            <h2>我的题目</h2>
-            <div class="list" id="studentAssignments"></div>
+
+        <div class="stats student-stats" id="studentStats"></div>
+
+        <div class="student-view" id="studentLibraryView">
+          <div class="section-head">
+            <div>
+              <h2>我的题库</h2>
+              <p>这里只显示老师分发给你的题目。</p>
+            </div>
           </div>
-          <div>
-            <h2>消息</h2>
-            <div class="list compact" id="studentInbox"></div>
-          </div>
+          <div class="question-grid" id="studentAssignments"></div>
         </div>
 
         <div class="workspace hidden" id="studentWriter">
@@ -70,12 +121,23 @@
           </div>
         </div>
 
-        <div class="grid two">
-          <div>
-            <h2>我的提交</h2>
-            <div class="list" id="studentSubmissions"></div>
+        <div class="student-view hidden" id="studentHistoryView">
+          <div class="section-head">
+            <div>
+              <h2>历史习作</h2>
+              <p>像卡片一样回看每次练习、老师反馈和 AI 反馈。</p>
+            </div>
           </div>
-          <div>
+          <div class="history-shell">
+            <div class="history-deck" id="studentHistoryDeck"></div>
+            <div class="history-controls" id="studentHistoryControls"></div>
+          </div>
+          <div class="detail-panel hidden" id="studentHistoryDetail"></div>
+        </div>
+
+        <div class="student-view hidden" id="studentPaymentsView">
+          <div class="payment-layout">
+          <div class="payment-card">
             <h2>付款申请</h2>
             <label>申请类型</label>
             <select id="paymentType">
@@ -86,7 +148,11 @@
             <label>备注</label>
             <textarea id="paymentNote" rows="4" placeholder="例如：已微信转账，申请 1 次 AI 反馈"></textarea>
             <button id="createPaymentRequestBtn" class="secondary" type="button">提交申请</button>
+          </div>
+          <div>
+            <h2>申请记录</h2>
             <div class="list compact" id="studentPaymentRequests"></div>
+          </div>
           </div>
         </div>
       </section>
@@ -155,6 +221,19 @@
           <button id="publishFeedbackBtn" type="button">发布反馈</button>
         </div>
       </section>
+
+      <div class="drawer-backdrop hidden" id="messageDrawerBackdrop">
+        <aside class="message-drawer" id="messageDrawer">
+          <div class="drawer-head">
+            <div>
+              <h2>消息</h2>
+              <p>老师反馈、权益发放和系统通知会显示在这里。</p>
+            </div>
+            <button class="ghost" id="closeMessagesBtn" type="button">关闭</button>
+          </div>
+          <div class="list compact" id="studentInbox"></div>
+        </aside>
+      </div>
     </section>
   </main>
 
@@ -163,4 +242,3 @@
   <script src="./assets/app.js"></script>
 </body>
 </html>
-
